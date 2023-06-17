@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+﻿using System;
 using System.Runtime.CompilerServices;
 
 namespace Gal.Core
@@ -9,25 +9,13 @@ namespace Gal.Core
     /// <para>author gouanlin</para>
     public static class TextEscape
     {
-        private static readonly Dictionary<char, string> m_DefaultEscapeTable = new() {
-            ['\\'] = "\\\\"
-            , ['\"'] = "\\\""
-            , ['\n'] = "\\n"
-            , ['\r'] = "\\r"
-            , ['\t'] = "\\t"
-            , ['\b'] = "\\b"
-            , ['\f'] = "\\f"
-            , ['\''] = "\\'"
-            ,
-        };
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static unsafe string Exec(string text, IDictionary<char, string> escapeTable = default, bool forceAscii = false) {
+        public static unsafe string Exec(string text) {
             var forecastLength = (int)(text.Length * 1.1f);
             if (forecastLength <= 256) {
                 RefWriter<char> writer = new(stackalloc char[forecastLength]);
                 try {
-                    Exec(text, ref writer, escapeTable, forceAscii);
+                    Exec(text, ref writer);
                     return writer.writtenSpan.ToString();
                 } finally {
                     writer.Dispose();
@@ -35,7 +23,7 @@ namespace Gal.Core
             } else {
                 RefWriter<char> writer = new(forecastLength);
                 try {
-                    Exec(text, ref writer, escapeTable, forceAscii);
+                    Exec(text, ref writer);
                     return writer.writtenSpan.ToString();
                 } finally {
                     writer.Dispose();
@@ -43,28 +31,89 @@ namespace Gal.Core
             }
         }
 
-        public static void Exec(ReadOnlySpan<char> text, ref RefWriter<char> writer, IDictionary<char, string> escapeTable = default, bool forceAscii = false) {
-            escapeTable ??= m_DefaultEscapeTable;
-            if (forceAscii) {
-                foreach (var c in text) {
-                    if (escapeTable.TryGetValue(c, out var t)) {
-                        writer.Write(t);
-                    } else if (c < ' ' || c > 127) {
-                        writer.Write('\\', 'u');
-                        writer.Write(((ushort)c).ToString("X4"));
+        public static void Exec(ReadOnlySpan<char> text, ref RefWriter<char> writer) {
+            start:
+
+            var span = writer.span;
+            var r = span.Length;
+            int i = 0, j = 0;
+            for (var l = text.Length; i < l; i++) {
+                var c = text[i];
+                if (c >= ' ') {
+                    if (c is '"' or '\\') {
+                        if ((r -= 2) > 0) {
+                            span[j++] = '\\';
+                            span[j++] = c;
+                        } else goto reset;
+                    } else if (r-- > 0) span[j++] = c;
+                    else goto reset;
+                } else {
+                    if (r-- <= 0) goto reset;
+                    span[j++] = '\\';
+
+                    if (c == '\t') {
+                        if (r-- > 0) span[j++] = 't';
+                        else goto reset;
+                    } else if (c == '\n') {
+                        if (r-- > 0) span[j++] = 'n';
+                        else goto reset;
+                    } else if (c == '\r') {
+                        if (r-- > 0) span[j++] = 'r';
+                        else goto reset;
+                    } else if (c == '\b') {
+                        if (r-- > 0) span[j++] = 'b';
+                        else goto reset;
+                    } else if (c == '\f') {
+                        if (r-- > 0) span[j++] = 'f';
+                        else goto reset;
                     } else {
-                        writer.Write(c);
+                        if ((r -= 5) > 0) {
+                            span[j++] = 'u';
+                            var t = ((ushort)c).ToString("X4");
+                            t.AsSpan().CopyTo(span);
+                            j += t.Length;
+                        } else goto reset;
                     }
                 }
-            } else {
-                foreach (var c in text) {
-                    if (escapeTable.TryGetValue(c, out var t)) {
-                        writer.Write(t);
-                    } else if (c < ' ') {
-                        writer.Write('\\', 'u');
-                        writer.Write(((ushort)c).ToString("X4"));
-                    } else {
-                        writer.Write(c);
+            }
+
+            writer.Advance(j);
+
+            return;
+            reset:
+            text = text[i..];
+            writer.Advance(j);
+            writer.HintSize((int)(text.Length * 1.1f));
+            goto start;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Exec1(ReadOnlySpan<char> text, ref RefWriter<char> writer) {
+            foreach (var c in text) {
+                if (c >= ' ') {
+                    if (c is '"' or '\\') writer.Write('\\', c);
+                    else writer.Write(c);
+                } else {
+                    switch (c) {
+                        case '\t':
+                            writer.Write('\\', 't');
+                            break;
+                        case '\n':
+                            writer.Write('\\', 'n');
+                            break;
+                        case '\r':
+                            writer.Write('\\', 'r');
+                            break;
+                        case '\b':
+                            writer.Write('\\', 'b');
+                            break;
+                        case '\f':
+                            writer.Write('\\', 'f');
+                            break;
+                        default:
+                            writer.Write('\\', 'u');
+                            writer.Write(((ushort)c).ToString("X4"));
+                            break;
                     }
                 }
             }
