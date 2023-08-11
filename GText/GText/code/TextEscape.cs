@@ -39,7 +39,7 @@ namespace Gal.Core
             int i = 0, j = 0;
             for (var l = text.Length; i < l; i++) {
                 var c = text[i];
-                if (c >= ' ') {
+                if (c > 31) {//c >= ' '
                     if (c is '"' or '\\') {
                         if ((r -= 2) > 0) {
                             span[j++] = '\\';
@@ -87,10 +87,15 @@ namespace Gal.Core
             goto start;
         }
 
+        /// <summary>
+        /// 此方法逻辑清晰,但性能要低一点
+        /// </summary>
+        /// <param name="text"></param>
+        /// <param name="writer"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Exec1(ReadOnlySpan<char> text, ref RefWriter<char> writer) {
             foreach (var c in text) {
-                if (c >= ' ') {
+                if (c > 31) {//c >= ' '
                     if (c is '"' or '\\') writer.Write('\\', c);
                     else writer.Write(c);
                 } else {
