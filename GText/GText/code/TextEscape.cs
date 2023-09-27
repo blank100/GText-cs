@@ -36,15 +36,19 @@ namespace Gal.Core
 
             var span = writer.span;
             var r = span.Length;
-            int i = 0, j = 0;
+            int i = 0, j = 0, hint = 1;
             for (var l = text.Length; i < l; i++) {
                 var c = text[i];
-                if (c > 31) {//c >= ' '
+                if (c > 31) {
+                    //c >= ' '
                     if (c is '"' or '\\') {
                         if ((r -= 2) > 0) {
                             span[j++] = '\\';
                             span[j++] = c;
-                        } else goto reset;
+                        } else {
+                            hint = 2;
+                            goto reset;
+                        }
                     } else if (r-- > 0) span[j++] = c;
                     else goto reset;
                 } else {
@@ -72,7 +76,10 @@ namespace Gal.Core
                             var t = ((ushort)c).ToString("X4");
                             t.AsSpan().CopyTo(span);
                             j += t.Length;
-                        } else goto reset;
+                        } else {
+                            hint = 5;
+                            goto reset;
+                        }
                     }
                 }
             }
@@ -83,7 +90,7 @@ namespace Gal.Core
             reset:
             text = text[i..];
             writer.Advance(j);
-            writer.HintSize((int)(text.Length * 1.1f));
+            writer.HintSize(Math.Max((int)(text.Length * 1.1f), text.Length + hint));
             goto start;
         }
 
